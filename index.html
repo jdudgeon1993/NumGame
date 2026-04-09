@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Peachy Numblast: Singularity</title>
+    <style>
+        :root {
+            --bg-color: #fdfaf5;
+            --tile-1: #b4c7a8; --tile-2: #e2937a; --tile-3: #8eabb8; --tile-4: #6d597a;
+            --stone: #2f3e46; --void: #000000; --text-color: #432818;
+        }
+        body {
+            margin: 0; background-color: var(--bg-color);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden; font-family: 'Segoe UI', sans-serif;
+            transition: all 0.5s ease;
+        }
+        #ui-layer { text-align:center; margin-bottom: 10px; width: 350px; z-index: 10; }
+        .stage-banner { font-size: 1.1rem; font-weight: bold; text-transform: uppercase; letter-spacing: 4px; color: var(--tile-2); transition: all 0.3s; }
+        
+        #game-container {
+            position: relative; display: grid; grid-template-columns: repeat(6, 55px);
+            grid-template-rows: repeat(10, 55px); gap: 4px; background: #eddcd2;
+            padding: 10px; border-radius: 16px; box-shadow: 0 25px 60px rgba(0,0,0,0.2);
+        }
+
+        /* The Singularity Pulse */
+        .singularity-active { background-color: #1a1a1a !important; }
+        .singularity-active .stage-banner { color: #ff4d4d; text-shadow: 0 0 10px red; }
+
+        .tile {
+            width: 55px; height: 55px; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 1.4rem; border-radius: 8px; color: white;
+            transition: transform 0.3s, background 0.4s, filter 0.3s;
+        }
+        .tile-1 { background-color: var(--tile-1); }
+        .tile-2 { background-color: var(--tile-2); }
+        .tile-3 { background-color: var(--tile-3); }
+        .tile-4 { background-color: var(--tile-4); }
+        .tile-stone { background-color: var(--stone); border-radius: 2px; box-shadow: inset 0 0 10px #000; }
+        .tile-void { background-color: var(--void); transform: scale(0.7); border-radius: 50%; }
+
+        .glitch { animation: glitch-anim 0.2s infinite; }
+        @keyframes glitch-anim {
+            0% { transform: translate(1px, -1px); filter: hue-rotate(0deg); }
+            50% { transform: translate(-1px, 1px); filter: hue-rotate(90deg); }
+            100% { transform: translate(1px, 1px); filter: hue-rotate(0deg); }
+        }
+
+        .harvesting { 
+            outline: 5px solid #fff; z-index: 5; transform: scale(1.3); 
+            box-shadow: 0 0 30px #fff; filter: brightness(2);
+        }
+
+        .pivot-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .pivot {
+            position: absolute; width: 50px; height: 50px; border-radius: 50%; 
+            pointer-events: auto; transform: translate(-50%, -50%); z-index: 20;
+        }
+        .pivot.ready:active { transform: translate(-50%, -50%) scale(1.4) rotate(90deg); background: rgba(255,255,255,0.4); }
+        .pivot.locked { background: rgba(255, 0, 0, 0.2); border: 2px dashed rgba(255, 0, 0, 0.5); }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h2 id="score-label" style="margin:0; color: var(--text-color);">Score: <span id="score">0</span></h2>
+        <div id="current-stage" class="stage-banner">Stage 1: Flow</div>
+    </div>
+
+    <div id="game-container">
+        <div id="pivots" class="pivot-layer"></div>
+    </div>
+
+<script>
+    const ROWS = 10, COLS = 6;
+    let grid = [], score = 0, isProcessing = false;
+    let stage = 1, moveCount = 0;
+    let stoneLifetimes = {};
+
+    function init() {
+        const container = document.getElementById('game-container');
+        for (let r = 0; r < ROWS; r++) {
+            grid[r] = [];
+            for (let c = 0; c < COLS; c++) {
+                grid[r][c] = Math.floor(Math.random() * 4) + 1;
+                const tile = document.createElement('div');
+                tile.id = `tile-${r}-${c}`;
+                container.appendChild(tile);
+            }
+        }
+        render();
+    }
+
+    async function handleMove(r, c) {
+        if (isProcessing) return;
+        moveCount++;
+        
+        // Singularity Pulse: Every 12 moves in Stage 5, invert the board colors/values
+        if (stage === 5 && moveCount % 12 === 0) {
+            invertBoard();
+        }
+
+        const topLeft = grid[r][c];
+        grid[r][c] = grid[r+1][c];
+        grid[r+1][c] = grid[r+1][c+1];
+        grid[r+1][c+1] = grid[r][c+1];
+        grid[r][c+1] = topLeft;
+        
+        render();
+        const harvested = await runHarvestSequence();
+        
+        if (!harvested) processStageObstacles();
+        updateStage();
+    }
+
+    function invertBoard() {
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                if (typeof grid[r][c] === 'number') {
+                    grid[r][c] = 5 - grid[r][c]; // 1 becomes 4, 2 becomes 3...
+                }
+            }
+        }
+        document.body.classList.add('singularity-active');
+        setTimeout(() => document.body.classList.remove('singularity-active'), 1000);
+        render();
+    }
+
+    function updateStage() {
+        if (score >= 12000) stage = 5;
+        else if (score >= 7000) stage = 4;
+        else if (score >= 3500) stage = 3;
+        else if (score >= 1000) stage = 2;
+        
+        const banners = ["", "Stage 1: Flow", "Stage 2: Entropy", "Stage 3: Static", "Stage 4: Tectonic", "Stage 5: SINGULARITY"];
+        document.getElementById('current-stage').innerText = banners[stage];
+    }
+
+    function processStageObstacles() {
+        // Higher intensity stone/void spawning
+        let spawnRate = (stage === 5) ? 4 : 7;
+        if (moveCount % spawnRate === 0) {
+            let r = Math.floor(Math.random() * ROWS), c = Math.floor(Math.random() * COLS);
+            if (grid[r][c] !== 'S' && grid[r][c] !== 'V') {
+                grid[r][c] = (stage === 5 && Math.random() > 0.6) ? 'V' : 'S';
+                if (stage < 5) stoneLifetimes[`${r},${c}`] = 6;
+            }
+        }
+
+        if (stage < 5) {
+            for (let key in stoneLifetimes) {
+                stoneLifetimes[key]--;
+                if (stoneLifetimes[key] <= 0) {
+                    let [r, c] = key.split(',').map(Number);
+                    if (grid[r][c] === 'S') grid[r][c] = Math.floor(Math.random() * 4) + 1;
+                    delete stoneLifetimes[key];
+                }
+            }
+        }
+        render();
+    }
+
+    async function runHarvestSequence() {
+        isProcessing = true;
+        let squares = findInitialSquares();
+        if (squares.size === 0) { isProcessing = false; return false; }
+
+        let activeSet = new Set(squares);
+        let firstCoord = squares.values().next().value.split(',').map(Number);
+        let val = grid[firstCoord[0]][firstCoord[1]];
+
+        while (true) {
+            activeSet.forEach(k => document.getElementById(`tile-${k.replace(',','-')}`).classList.add('harvesting'));
+            await new Promise(r => setTimeout(r, 400));
+
+            activeSet.forEach(k => { 
+                let [r,c] = k.split(',').map(Number); 
+                if(typeof grid[r][c] === 'number' && grid[r][c] < 4) grid[r][c]++; 
+            });
+            val = Math.min(val + 1, 4);
+            render();
+
+            let pairs = findLinearPairs(activeSet, val);
+            if (pairs.size > 0) pairs.forEach(p => activeSet.add(p));
+            else break;
+        }
+
+        activeSet.forEach(k => {
+            let [r, c] = k.split(',').map(Number);
+            [[r-1,c], [r+1,c], [r,c-1], [r,c+1]].forEach(([nr, nc]) => {
+                if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+                    if (grid[nr][nc] === 'S' || grid[nr][nc] === 'V') grid[nr][nc] = null;
+                }
+            });
+            grid[r][c] = null;
+        });
+
+        score += (activeSet.size * 100);
+        document.getElementById('score').innerText = score;
+        
+        render();
+        await new Promise(r => setTimeout(r, 200));
+        applyGravity();
+
+        // Stage 4 & 5: Guaranteed shift on harvest
+        if (stage >= 4) {
+            shiftBoard();
+        }
+
+        render();
+        isProcessing = false;
+        return true;
+    }
+
+    function shiftBoard() {
+        let col = Math.floor(Math.random() * COLS);
+        let first = grid[0][col];
+        for (let r = 0; r < ROWS - 1; r++) grid[r][col] = grid[r+1][col];
+        grid[ROWS-1][col] = first;
+    }
+
+    function findInitialSquares() {
+        let sets = new Set();
+        for (let r = 0; r < ROWS - 1; r++) {
+            for (let c = 0; c < COLS - 1; c++) {
+                let v = grid[r][c];
+                if (v && v !== 'S' && v !== 'V' && v === grid[r+1][c] && v === grid[r][c+1] && v === grid[r+1][c+1]) {
+                    [`${r},${c}`, `${r+1},${c}`, `${r},${c+1}`, `${r+1},${c+1}`].forEach(k => sets.add(k));
+                }
+            }
+        }
+        return sets;
+    }
+
+    function findLinearPairs(activeSet, target) {
+        let links = new Set();
+        for (let coord of activeSet) {
+            let [r, c] = coord.split(',').map(Number);
+            [[r-1,c], [r+1,c], [r,c-1], [r,c+1]].forEach(([nr, nc]) => {
+                if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !activeSet.has(`${nr},${nc}`)) {
+                    if (grid[nr][nc] === target && isPartOfLinearPair(nr, nc, target)) links.add(`${nr},${nc}`);
+                }
+            });
+        }
+        return links;
+    }
+
+    function isPartOfLinearPair(r, c, val) {
+        return (c > 0 && grid[r][c-1] === val) || (c < COLS - 1 && grid[r][c+1] === val) || (r > 0 && grid[r-1][c] === val) || (r < ROWS - 1 && grid[r+1][c] === val);
+    }
+
+    function applyGravity() {
+        for (let c = 0; c < COLS; c++) {
+            let empty = ROWS - 1;
+            for (let r = ROWS - 1; r >= 0; r--) {
+                if (grid[r][c] !== null) {
+                    let v = grid[r][c];
+                    grid[r][c] = null;
+                    grid[empty][c] = v;
+                    empty--;
+                }
+            }
+            for (let r = empty; r >= 0; r--) grid[r][c] = Math.floor(Math.random() * 4) + 1;
+        }
+    }
+
+    function render() {
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const el = document.getElementById(`tile-${r}-${c}`);
+                const v = grid[r][c];
+                el.className = 'tile ' + (v ? (v === 'S' ? 'tile-stone' : v === 'V' ? 'tile-void' : `tile-${v}`) : 'tile-empty');
+                
+                // Singularity visual chaos
+                if (stage >= 3) {
+                    if (Math.random() > (stage === 5 ? 0.7 : 0.9)) {
+                        el.classList.add('glitch');
+                        if (stage === 5) el.innerText = Math.floor(Math.random() * 4) + 1; // Lie about number
+                    } else {
+                        el.classList.remove('glitch');
+                        el.innerText = (v === 'S' || v === 'V') ? '' : (v || '');
+                    }
+                } else {
+                    el.innerText = (v === 'S' || v === 'V') ? '' : (v || '');
+                }
+                
+                el.classList.remove('harvesting');
+            }
+        }
+        renderPivots();
+    }
+
+    function renderPivots() {
+        const layer = document.getElementById('pivots');
+        layer.innerHTML = "";
+        for (let r = 0; r < ROWS - 1; r++) {
+            for (let c = 0; c < COLS - 1; c++) {
+                const p = document.createElement('div');
+                const locked = [grid[r][c], grid[r+1][c], grid[r][c+1], grid[r+1][c+1]].some(v => v === 'S' || v === 'V');
+                p.className = `pivot ${locked ? 'locked' : 'ready'}`;
+                p.style.top = `${(r + 1) * 59 + 10}px`;
+                p.style.left = `${(c + 1) * 59 + 10}px`;
+                if (!locked) p.onclick = () => handleMove(r, c);
+                layer.appendChild(p);
+            }
+        }
+    }
+
+    init();
+</script>
+</body>
+</html>
