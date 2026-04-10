@@ -10,314 +10,672 @@
             --tile-1: #b4c7a8; --tile-2: #e2937a; --tile-3: #8eabb8; --tile-4: #6d597a;
             --stone: #2f3e46; --void: #000000; --text-color: #432818;
         }
+        * { box-sizing: border-box; }
         body {
             margin: 0; background-color: var(--bg-color);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            height: 100vh; overflow: hidden; font-family: 'Segoe UI', sans-serif;
-            transition: all 0.5s ease;
+            min-height: 100vh; overflow: hidden; font-family: 'Segoe UI', sans-serif;
         }
-        #ui-layer { text-align:center; margin-bottom: 10px; width: 350px; z-index: 10; }
-        .stage-banner { font-size: 1.1rem; font-weight: bold; text-transform: uppercase; letter-spacing: 4px; color: var(--tile-2); transition: all 0.3s; }
-        
+
+        /* --- UI Layer --- */
+        #ui-layer { text-align: center; margin-bottom: 10px; width: 350px; z-index: 10; }
+        #score-label { margin: 0; color: var(--text-color); font-size: 1.3rem; }
+        #score { transition: color 0.2s; }
+        .stage-banner {
+            font-size: 1rem; font-weight: bold; text-transform: uppercase;
+            letter-spacing: 4px; margin-top: 2px; transition: color 0.4s;
+        }
+        #blackout-bar-wrap {
+            width: 330px; height: 7px; background: #e0d8ce;
+            border-radius: 4px; margin: 7px auto 0; overflow: hidden;
+        }
+        #blackout-bar {
+            height: 100%; width: 0%; border-radius: 4px;
+            background: #4caf50;
+            transition: width 0.5s ease, background-color 0.5s ease;
+        }
+
+        /* --- Board --- */
         #game-container {
-            position: relative; display: grid; grid-template-columns: repeat(6, 55px);
-            grid-template-rows: repeat(10, 55px); gap: 4px; background: #eddcd2;
-            padding: 10px; border-radius: 16px; box-shadow: 0 25px 60px rgba(0,0,0,0.2);
+            position: relative;
+            display: grid;
+            grid-template-columns: repeat(6, 55px);
+            grid-template-rows: repeat(10, 55px);
+            gap: 4px;
+            background: #eddcd2;
+            padding: 10px;
+            border-radius: 16px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.2);
+            transition: box-shadow 0.4s;
         }
 
-        /* The Singularity Pulse */
-        .singularity-active { background-color: #1a1a1a !important; }
-        .singularity-active .stage-banner { color: #ff4d4d; text-shadow: 0 0 10px red; }
+        @keyframes dangerPulse {
+            0%, 100% { box-shadow: 0 25px 60px rgba(0,0,0,0.2); }
+            50%       { box-shadow: 0 25px 60px rgba(200,40,40,0.55), 0 0 40px rgba(200,40,40,0.25); }
+        }
+        .danger { animation: dangerPulse 0.9s ease-in-out infinite; }
 
+        /* --- Tiles --- */
         .tile {
-            width: 55px; height: 55px; display: flex; align-items: center; justify-content: center;
+            width: 55px; height: 55px;
+            display: flex; align-items: center; justify-content: center;
             font-weight: bold; font-size: 1.4rem; border-radius: 8px; color: white;
-            transition: transform 0.3s, background 0.4s, filter 0.3s;
+            transition: filter 0.6s ease, transform 0.12s ease;
+            user-select: none; -webkit-user-select: none;
         }
         .tile-1 { background-color: var(--tile-1); }
         .tile-2 { background-color: var(--tile-2); }
         .tile-3 { background-color: var(--tile-3); }
         .tile-4 { background-color: var(--tile-4); }
         .tile-stone { background-color: var(--stone); border-radius: 2px; box-shadow: inset 0 0 10px #000; }
-        .tile-void { background-color: var(--void); transform: scale(0.7); border-radius: 50%; }
+        .tile-void  { background-color: var(--void); transform: scale(0.65); border-radius: 50%; }
+        .tile-empty { background-color: rgba(0,0,0,0.04); }
 
-        .glitch { animation: glitch-anim 0.2s infinite; }
-        @keyframes glitch-anim {
-            0% { transform: translate(1px, -1px); filter: hue-rotate(0deg); }
-            50% { transform: translate(-1px, 1px); filter: hue-rotate(90deg); }
-            100% { transform: translate(1px, 1px); filter: hue-rotate(0deg); }
+        /* Blackout darkening */
+        .b1 { filter: brightness(0.72) grayscale(0.25); }
+        .b2 { filter: brightness(0.42) grayscale(0.65); }
+        .b3 { filter: brightness(0.08) grayscale(1);    }
+
+        /* Harvest glow */
+        .harvesting {
+            outline: 4px solid rgba(255,255,255,0.9);
+            z-index: 5; transform: scale(1.22);
+            box-shadow: 0 0 22px rgba(255,255,255,0.7);
+            filter: brightness(1.9) !important;
         }
 
-        .harvesting { 
-            outline: 5px solid #fff; z-index: 5; transform: scale(1.3); 
-            box-shadow: 0 0 30px #fff; filter: brightness(2);
+        /* --- Pivots --- */
+        .pivot-layer {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%; pointer-events: none;
         }
-
-        .pivot-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         .pivot {
-            position: absolute; width: 50px; height: 50px; border-radius: 50%; 
+            position: absolute; width: 48px; height: 48px; border-radius: 50%;
             pointer-events: auto; transform: translate(-50%, -50%); z-index: 20;
+            transition: transform 0.08s;
         }
-        .pivot.ready:active { transform: translate(-50%, -50%) scale(1.4) rotate(90deg); background: rgba(255,255,255,0.4); }
-        .pivot.locked { background: rgba(255, 0, 0, 0.2); border: 2px dashed rgba(255, 0, 0, 0.5); }
+        .pivot.ready:active {
+            transform: translate(-50%, -50%) scale(1.35);
+            background: rgba(255,255,255,0.3);
+        }
+        .pivot.locked {
+            background: rgba(255,0,0,0.12);
+            border: 2px dashed rgba(255,0,0,0.35);
+        }
+
+        /* --- Score pop --- */
+        @keyframes scorePop {
+            0%   { transform: scale(1); }
+            40%  { transform: scale(1.35); color: var(--tile-2); }
+            100% { transform: scale(1); }
+        }
+        .pop { animation: scorePop 0.28s ease; }
+
+        /* --- Stage flash --- */
+        @keyframes stageFlash {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.25; }
+        }
+        .flash { animation: stageFlash 0.35s ease 3; }
+
+        /* --- Game Over Overlay --- */
+        #go-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.72); z-index: 200;
+            align-items: center; justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+        #go-overlay.show { display: flex; }
+
+        #go-box {
+            background: var(--bg-color); border-radius: 22px;
+            padding: 44px 54px; text-align: center;
+            box-shadow: 0 24px 70px rgba(0,0,0,0.45);
+            animation: popIn 0.38s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        @keyframes popIn {
+            from { transform: scale(0.75); opacity: 0; }
+            to   { transform: scale(1);    opacity: 1; }
+        }
+        #go-box h2 { margin: 0 0 6px; color: var(--stone); font-size: 1.9rem; letter-spacing: 3px; }
+        #go-box p  { margin: 0 0 4px; color: #999; font-size: 0.95rem; }
+        #go-final  { color: var(--tile-2); font-size: 2.6rem; font-weight: bold; margin: 6px 0 26px; }
+        #go-btn {
+            background: var(--tile-2); color: #fff; border: none; border-radius: 12px;
+            padding: 14px 44px; font-size: 1.05rem; font-weight: bold;
+            letter-spacing: 2px; cursor: pointer;
+            box-shadow: 0 4px 18px rgba(226,147,122,0.45);
+            transition: transform 0.1s;
+        }
+        #go-btn:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
 
-    <div id="ui-layer">
-        <h2 id="score-label" style="margin:0; color: var(--text-color);">Score: <span id="score">0</span></h2>
-        <div id="current-stage" class="stage-banner">Stage 1: Flow</div>
-    </div>
+<div id="ui-layer">
+    <h2 id="score-label">Score: <span id="score">0</span></h2>
+    <div id="current-stage" class="stage-banner" style="color: var(--tile-1);">Stage 1: Flow</div>
+    <div id="blackout-bar-wrap"><div id="blackout-bar"></div></div>
+</div>
 
-    <div id="game-container">
-        <div id="pivots" class="pivot-layer"></div>
+<div id="game-container">
+    <div id="pivots" class="pivot-layer"></div>
+</div>
+
+<div id="go-overlay">
+    <div id="go-box">
+        <h2>BOARD DARK</h2>
+        <p>Final Score</p>
+        <div id="go-final">0</div>
+        <button id="go-btn" onclick="restart()">PLAY AGAIN</button>
     </div>
+</div>
 
 <script>
-    const ROWS = 10, COLS = 6;
-    let grid = [], score = 0, isProcessing = false;
-    let stage = 1, moveCount = 0;
-    let stoneLifetimes = {};
+// ─── Constants ────────────────────────────────────────────────────────────────
+const ROWS = 10, COLS = 6;
+const TILE_SIZE = 59; // px per cell (55px tile + 4px gap)
+const GO_THRESHOLD = Math.floor(ROWS * COLS * 0.75); // 75% black → game over
 
-    function init() {
-        const container = document.getElementById('game-container');
-        for (let r = 0; r < ROWS; r++) {
-            grid[r] = [];
-            for (let c = 0; c < COLS; c++) {
-                grid[r][c] = Math.floor(Math.random() * 4) + 1;
-                const tile = document.createElement('div');
-                tile.id = `tile-${r}-${c}`;
-                container.appendChild(tile);
-            }
-        }
-        render();
+// ─── State ────────────────────────────────────────────────────────────────────
+let grid, darkness, stoneLifetimes;
+let score, stage, moveCount;
+let isProcessing, gameOver, dangerActive;
+let blackoutTimer;
+
+// ─── Audio ───────────────────────────────────────────────────────────────────
+let audioCtx;
+function audio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+}
+
+function tone(freq, type, dur, vol = 0.22, delay = 0) {
+    try {
+        const ctx = audio();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.type = type;
+        o.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+        g.gain.setValueAtTime(vol, ctx.currentTime + delay);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + dur);
+        o.start(ctx.currentTime + delay);
+        o.stop(ctx.currentTime + delay + dur);
+    } catch (_) {}
+}
+
+const sfx = {
+    rotate() { tone(200, 'sine', 0.07, 0.14); },
+
+    match(chainDepth) {
+        const base = 330 + chainDepth * 55;
+        [base, base * 1.26, base * 1.5].forEach((f, i) => tone(f, 'sine', 0.2, 0.28, i * 0.07));
+    },
+
+    chain(depth) {
+        tone(440 * Math.pow(1.22, depth), 'triangle', 0.22, 0.32);
+        tone(440 * Math.pow(1.22, depth) * 1.5, 'sine', 0.15, 0.18, 0.05);
+    },
+
+    blackoutTick() { tone(110, 'sawtooth', 0.1, 0.1); },
+
+    warning() {
+        tone(155, 'square', 0.14, 0.12);
+        tone(138, 'square', 0.14, 0.09, 0.16);
+    },
+
+    levelUp() {
+        [330, 415, 523, 659].forEach((f, i) => tone(f, 'sine', 0.22, 0.28, i * 0.09));
+    },
+
+    gameOver() {
+        [440, 370, 294, 220].forEach((f, i) => tone(f, 'sawtooth', 0.38, 0.28, i * 0.23));
     }
+};
 
-    async function handleMove(r, c) {
-        if (isProcessing) return;
-        moveCount++;
-        
-        // Singularity Pulse: Every 12 moves in Stage 5, invert the board colors/values
-        if (stage === 5 && moveCount % 12 === 0) {
-            invertBoard();
+// ─── Stage Config ─────────────────────────────────────────────────────────────
+const STAGES = [
+    null, // index 0 unused
+    { name: 'Stage 1: Flow',         color: '#b4c7a8', blackoutMs: 6500, spawnEvery: null },
+    { name: 'Stage 2: Entropy',      color: '#e2937a', blackoutMs: 4800, spawnEvery: 8    },
+    { name: 'Stage 3: Static',       color: '#8eabb8', blackoutMs: 3200, spawnEvery: 6    },
+    { name: 'Stage 4: Tectonic',     color: '#6d597a', blackoutMs: 2100, spawnEvery: 5    },
+    { name: 'Stage 5: SINGULARITY',  color: '#ff4d4d', blackoutMs: 1300, spawnEvery: 4    },
+];
+
+function stageForScore(s) {
+    if (s >= 12000) return 5;
+    if (s >= 7000)  return 4;
+    if (s >= 3500)  return 3;
+    if (s >= 1000)  return 2;
+    return 1;
+}
+
+// ─── Init / Restart ───────────────────────────────────────────────────────────
+function buildGrid() {
+    grid = [];
+    darkness = [];
+    stoneLifetimes = {};
+    for (let r = 0; r < ROWS; r++) {
+        grid[r] = [];
+        darkness[r] = [];
+        for (let c = 0; c < COLS; c++) {
+            grid[r][c] = Math.floor(Math.random() * 4) + 1;
+            darkness[r][c] = 0;
+        }
+    }
+}
+
+function init() {
+    score = 0; stage = 1; moveCount = 0;
+    isProcessing = false; gameOver = false; dangerActive = false;
+
+    buildGrid();
+
+    // Create tile DOM elements once
+    const container = document.getElementById('game-container');
+    for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++) {
+            const el = document.createElement('div');
+            el.id = `tile-${r}-${c}`;
+            container.appendChild(el);
         }
 
-        const topLeft = grid[r][c];
-        grid[r][c] = grid[r+1][c];
-        grid[r+1][c] = grid[r+1][c+1];
-        grid[r+1][c+1] = grid[r][c+1];
-        grid[r][c+1] = topLeft;
-        
-        render();
-        const harvested = await runHarvestSequence();
-        
-        if (!harvested) processStageObstacles();
-        updateStage();
-    }
+    render();
+    startBlackout();
+}
 
-    function invertBoard() {
-        for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS; c++) {
-                if (typeof grid[r][c] === 'number') {
-                    grid[r][c] = 5 - grid[r][c]; // 1 becomes 4, 2 becomes 3...
-                }
-            }
-        }
-        document.body.classList.add('singularity-active');
-        setTimeout(() => document.body.classList.remove('singularity-active'), 1000);
-        render();
-    }
+function restart() {
+    document.getElementById('go-overlay').classList.remove('show');
+    document.getElementById('game-container').classList.remove('danger');
 
-    function updateStage() {
-        if (score >= 12000) stage = 5;
-        else if (score >= 7000) stage = 4;
-        else if (score >= 3500) stage = 3;
-        else if (score >= 1000) stage = 2;
-        
-        const banners = ["", "Stage 1: Flow", "Stage 2: Entropy", "Stage 3: Static", "Stage 4: Tectonic", "Stage 5: SINGULARITY"];
-        document.getElementById('current-stage').innerText = banners[stage];
-    }
+    score = 0; stage = 1; moveCount = 0;
+    isProcessing = false; gameOver = false; dangerActive = false;
 
-    function processStageObstacles() {
-        // Higher intensity stone/void spawning
-        let spawnRate = (stage === 5) ? 4 : 7;
-        let obstacleLifetime = (stage >= 5) ? 10 : 6;
-        if (moveCount % spawnRate === 0) {
-            let r = Math.floor(Math.random() * ROWS), c = Math.floor(Math.random() * COLS);
-            if (grid[r][c] !== 'S' && grid[r][c] !== 'V') {
-                grid[r][c] = (stage === 5 && Math.random() > 0.6) ? 'V' : 'S';
-                stoneLifetimes[`${r},${c}`] = obstacleLifetime;
-            }
-        }
+    document.getElementById('score').innerText = '0';
+    document.getElementById('blackout-bar').style.width = '0%';
+    document.getElementById('blackout-bar').style.backgroundColor = '#4caf50';
 
-        for (let key in stoneLifetimes) {
-            stoneLifetimes[key]--;
-            if (stoneLifetimes[key] <= 0) {
-                let [r, c] = key.split(',').map(Number);
-                if (grid[r][c] === 'S' || grid[r][c] === 'V') {
-                    grid[r][c] = Math.floor(Math.random() * 4) + 1;
-                }
-                delete stoneLifetimes[key];
-            }
-        }
-        render();
-    }
+    const banner = document.getElementById('current-stage');
+    banner.innerText = STAGES[1].name;
+    banner.style.color = STAGES[1].color;
 
-    async function runHarvestSequence() {
-        isProcessing = true;
-        let squares = findInitialSquares();
-        if (squares.size === 0) { isProcessing = false; return false; }
+    buildGrid();
+    render();
+    startBlackout();
+}
 
-        let activeSet = new Set(squares);
-        let firstCoord = squares.values().next().value.split(',').map(Number);
-        let val = grid[firstCoord[0]][firstCoord[1]];
+// ─── Blackout System ──────────────────────────────────────────────────────────
+function startBlackout() {
+    clearInterval(blackoutTimer);
+    blackoutTimer = setInterval(tickBlackout, STAGES[stage].blackoutMs);
+}
 
-        while (true) {
-            activeSet.forEach(k => document.getElementById(`tile-${k.replace(',','-')}`).classList.add('harvesting'));
-            await new Promise(r => setTimeout(r, 400));
+function tickBlackout() {
+    if (gameOver || isProcessing) return;
 
-            activeSet.forEach(k => { 
-                let [r,c] = k.split(',').map(Number); 
-                if(typeof grid[r][c] === 'number' && grid[r][c] < 4) grid[r][c]++; 
-            });
-            val = Math.min(val + 1, 4);
+    // Darken one random eligible tile
+    for (let attempt = 0; attempt < 30; attempt++) {
+        const r = Math.floor(Math.random() * ROWS);
+        const c = Math.floor(Math.random() * COLS);
+        if (grid[r][c] !== 'S' && grid[r][c] !== 'V' && darkness[r][c] < 3) {
+            darkness[r][c]++;
+            if (darkness[r][c] === 3) sfx.blackoutTick();
             render();
-
-            let pairs = findLinearPairs(activeSet, val);
-            if (pairs.size > 0) pairs.forEach(p => activeSet.add(p));
-            else break;
+            refreshBlackoutBar();
+            checkGameOver();
+            return;
         }
+    }
+}
 
-        activeSet.forEach(k => {
-            let [r, c] = k.split(',').map(Number);
-            [[r-1,c], [r+1,c], [r,c-1], [r,c+1]].forEach(([nr, nc]) => {
-                if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
-                    if (grid[nr][nc] === 'S' || grid[nr][nc] === 'V') {
-                        delete stoneLifetimes[`${nr},${nc}`];
-                        grid[nr][nc] = null;
-                    }
-                }
-            });
-            grid[r][c] = null;
+function lightenAround(keys) {
+    // Cleared tiles reset to 0; their immediate neighbours recover one level
+    keys.forEach(k => {
+        let [r, c] = k.split(',').map(Number);
+        darkness[r][c] = 0;
+        [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc]) => {
+            if (inBounds(nr,nc) && darkness[nr][nc] > 0) darkness[nr][nc]--;
+        });
+    });
+}
+
+function countDark() {
+    let n = 0;
+    for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+            if (darkness[r][c] === 3) n++;
+    return n;
+}
+
+function refreshBlackoutBar() {
+    const pct = countDark() / (ROWS * COLS);
+    const bar = document.getElementById('blackout-bar');
+    bar.style.width = (pct * 100).toFixed(1) + '%';
+
+    // Colour: green → yellow → red
+    const r = Math.round(255 * Math.min(pct * 2, 1));
+    const g = Math.round(255 * Math.min((1 - pct) * 2, 1));
+    bar.style.backgroundColor = `rgb(${r},${g},50)`;
+
+    const container = document.getElementById('game-container');
+    if (pct >= 0.5 && !dangerActive) {
+        dangerActive = true;
+        container.classList.add('danger');
+        sfx.warning();
+    } else if (pct < 0.5 && dangerActive) {
+        dangerActive = false;
+        container.classList.remove('danger');
+    }
+}
+
+function checkGameOver() {
+    if (countDark() >= GO_THRESHOLD) triggerGameOver();
+}
+
+function triggerGameOver() {
+    gameOver = true;
+    clearInterval(blackoutTimer);
+    sfx.gameOver();
+    setTimeout(() => {
+        document.getElementById('go-final').innerText = score;
+        document.getElementById('go-overlay').classList.add('show');
+    }, 700);
+}
+
+// ─── Core Move ────────────────────────────────────────────────────────────────
+async function handleMove(r, c) {
+    if (isProcessing || gameOver) return;
+    sfx.rotate();
+    moveCount++;
+
+    // Stage 5: every 12 moves, briefly invert the board
+    if (stage === 5 && moveCount % 12 === 0) invertBoard();
+
+    // Rotate tile values clockwise
+    const tl = grid[r][c];
+    grid[r][c]     = grid[r+1][c];
+    grid[r+1][c]   = grid[r+1][c+1];
+    grid[r+1][c+1] = grid[r][c+1];
+    grid[r][c+1]   = tl;
+
+    // Rotate darkness values the same way
+    const dl = darkness[r][c];
+    darkness[r][c]     = darkness[r+1][c];
+    darkness[r+1][c]   = darkness[r+1][c+1];
+    darkness[r+1][c+1] = darkness[r][c+1];
+    darkness[r][c+1]   = dl;
+
+    render();
+    const harvested = await harvest();
+    if (!harvested) spawnObstacles();
+    updateStage();
+}
+
+// ─── Harvest Sequence ─────────────────────────────────────────────────────────
+async function harvest() {
+    isProcessing = true;
+    const initial = findSquares();
+    if (!initial.size) { isProcessing = false; return false; }
+
+    let active = new Set(initial);
+    const [fr, fc] = initial.values().next().value.split(',').map(Number);
+    let val = grid[fr][fc];
+    let chainDepth = 0;
+
+    sfx.match(0);
+
+    while (true) {
+        // Highlight active tiles
+        active.forEach(k => {
+            const el = document.getElementById(`tile-${k.replace(',', '-')}`);
+            if (el) el.classList.add('harvesting');
         });
 
-        score += (activeSet.size * 100);
-        document.getElementById('score').innerText = score;
-        
-        render();
-        await new Promise(r => setTimeout(r, 200));
-        applyGravity();
+        await delay(380);
 
-        // Stage 4 & 5: Guaranteed shift on harvest
-        if (stage >= 4) {
-            shiftBoard();
+        // Increment tile values
+        active.forEach(k => {
+            const [r, c] = k.split(',').map(Number);
+            if (typeof grid[r][c] === 'number' && grid[r][c] < 4) grid[r][c]++;
+        });
+        val = Math.min(val + 1, 4);
+        render();
+
+        // Look for chain expansions
+        const chains = findChains(active, val);
+        if (chains.size) {
+            chains.forEach(p => active.add(p));
+            chainDepth++;
+            sfx.chain(chainDepth);
+        } else {
+            break;
         }
-
-        render();
-        isProcessing = false;
-        return true;
     }
 
-    function shiftBoard() {
-        let col = Math.floor(Math.random() * COLS);
-        let first = grid[0][col];
-        for (let r = 0; r < ROWS - 1; r++) grid[r][col] = grid[r+1][col];
-        grid[ROWS-1][col] = first;
-    }
+    // Recover darkness from cleared region
+    lightenAround([...active]);
 
-    function findInitialSquares() {
-        let sets = new Set();
-        for (let r = 0; r < ROWS - 1; r++) {
-            for (let c = 0; c < COLS - 1; c++) {
-                let v = grid[r][c];
-                if (v && v !== 'S' && v !== 'V' && v === grid[r+1][c] && v === grid[r][c+1] && v === grid[r+1][c+1]) {
-                    [`${r},${c}`, `${r+1},${c}`, `${r},${c+1}`, `${r+1},${c+1}`].forEach(k => sets.add(k));
-                }
+    // Destroy adjacent obstacles, then null out active tiles
+    active.forEach(k => {
+        const [r, c] = k.split(',').map(Number);
+        [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc]) => {
+            if (inBounds(nr,nc) && (grid[nr][nc] === 'S' || grid[nr][nc] === 'V')) {
+                delete stoneLifetimes[`${nr},${nc}`];
+                grid[nr][nc] = null;
+            }
+        });
+        grid[r][c] = null;
+    });
+
+    // Score with chain multiplier
+    const gained = active.size * 100 * (chainDepth + 1);
+    score += gained;
+    document.getElementById('score').innerText = score;
+    popScore();
+
+    render();
+    await delay(180);
+    applyGravity();
+    if (stage >= 4) columnShift();
+    render();
+    refreshBlackoutBar();
+    checkGameOver();
+
+    isProcessing = false;
+    return true;
+}
+
+// ─── Match Finding ────────────────────────────────────────────────────────────
+function findSquares() {
+    const found = new Set();
+    for (let r = 0; r < ROWS - 1; r++) {
+        for (let c = 0; c < COLS - 1; c++) {
+            const v = grid[r][c];
+            if (!v || v === 'S' || v === 'V') continue;
+            if (darkness[r][c] >= 3 || darkness[r+1][c] >= 3 ||
+                darkness[r][c+1] >= 3 || darkness[r+1][c+1] >= 3) continue;
+            if (v === grid[r+1][c] && v === grid[r][c+1] && v === grid[r+1][c+1]) {
+                [`${r},${c}`,`${r+1},${c}`,`${r},${c+1}`,`${r+1},${c+1}`].forEach(k => found.add(k));
             }
         }
-        return sets;
     }
+    return found;
+}
 
-    function findLinearPairs(activeSet, target) {
-        let links = new Set();
-        for (let coord of activeSet) {
-            let [r, c] = coord.split(',').map(Number);
-            [[r-1,c], [r+1,c], [r,c-1], [r,c+1]].forEach(([nr, nc]) => {
-                if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !activeSet.has(`${nr},${nc}`)) {
-                    if (grid[nr][nc] === target && isPartOfLinearPair(nr, nc, target)) links.add(`${nr},${nc}`);
-                }
-            });
+function findChains(active, target) {
+    const links = new Set();
+    for (const coord of active) {
+        const [r, c] = coord.split(',').map(Number);
+        [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc]) => {
+            if (!inBounds(nr,nc) || active.has(`${nr},${nc}`)) return;
+            if (grid[nr][nc] === target && darkness[nr][nc] < 3 && hasNeighbourVal(nr, nc, target, active)) {
+                links.add(`${nr},${nc}`);
+            }
+        });
+    }
+    return links;
+}
+
+function hasNeighbourVal(r, c, val, active) {
+    return [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].some(([nr,nc]) =>
+        inBounds(nr,nc) && (active.has(`${nr},${nc}`) || (grid[nr][nc] === val && darkness[nr][nc] < 3))
+    );
+}
+
+// ─── Gravity ──────────────────────────────────────────────────────────────────
+function applyGravity() {
+    for (let c = 0; c < COLS; c++) {
+        const moved = {};
+        let bottom = ROWS - 1;
+        for (let r = ROWS - 1; r >= 0; r--) {
+            if (grid[r][c] === null) continue;
+            const oldKey = `${r},${c}`;
+            const newKey = `${bottom},${c}`;
+            grid[bottom][c]    = grid[r][c];
+            darkness[bottom][c] = darkness[r][c];
+            if (r !== bottom) { grid[r][c] = null; darkness[r][c] = 0; }
+            if (stoneLifetimes[oldKey] !== undefined) {
+                moved[newKey] = stoneLifetimes[oldKey];
+                delete stoneLifetimes[oldKey];
+            }
+            bottom--;
         }
-        return links;
+        Object.assign(stoneLifetimes, moved);
+        for (let r = bottom; r >= 0; r--) {
+            grid[r][c]    = Math.floor(Math.random() * 4) + 1;
+            darkness[r][c] = 0;
+        }
+    }
+}
+
+// ─── Stage Mechanics ──────────────────────────────────────────────────────────
+function columnShift() {
+    const col = Math.floor(Math.random() * COLS);
+    const topVal = grid[0][col], topDark = darkness[0][col];
+    for (let r = 0; r < ROWS - 1; r++) {
+        grid[r][col]    = grid[r+1][col];
+        darkness[r][col] = darkness[r+1][col];
+    }
+    grid[ROWS-1][col]    = topVal;
+    darkness[ROWS-1][col] = topDark;
+}
+
+function invertBoard() {
+    for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+            if (typeof grid[r][c] === 'number') grid[r][c] = 5 - grid[r][c];
+
+    const gc = document.getElementById('game-container');
+    gc.style.filter = 'invert(1) hue-rotate(80deg)';
+    setTimeout(() => gc.style.filter = '', 550);
+    render();
+}
+
+function spawnObstacles() {
+    const cfg = STAGES[stage];
+    if (!cfg.spawnEvery || moveCount % cfg.spawnEvery !== 0) return;
+
+    const lifetime = stage >= 5 ? 10 : 6;
+    let r, c, attempts = 0;
+    do {
+        r = Math.floor(Math.random() * ROWS);
+        c = Math.floor(Math.random() * COLS);
+        attempts++;
+    } while ((grid[r][c] === 'S' || grid[r][c] === 'V') && attempts < 20);
+
+    if (grid[r][c] !== 'S' && grid[r][c] !== 'V') {
+        grid[r][c] = (stage === 5 && Math.random() > 0.6) ? 'V' : 'S';
+        stoneLifetimes[`${r},${c}`] = lifetime;
     }
 
-    function isPartOfLinearPair(r, c, val) {
-        return (c > 0 && grid[r][c-1] === val) || (c < COLS - 1 && grid[r][c+1] === val) || (r > 0 && grid[r-1][c] === val) || (r < ROWS - 1 && grid[r+1][c] === val);
+    // Decay existing obstacles
+    for (const key of Object.keys(stoneLifetimes)) {
+        stoneLifetimes[key]--;
+        if (stoneLifetimes[key] <= 0) {
+            const [kr, kc] = key.split(',').map(Number);
+            if (grid[kr][kc] === 'S' || grid[kr][kc] === 'V')
+                grid[kr][kc] = Math.floor(Math.random() * 4) + 1;
+            delete stoneLifetimes[key];
+        }
     }
 
-    function applyGravity() {
+    render();
+}
+
+function updateStage() {
+    const next = stageForScore(score);
+    if (next !== stage) {
+        stage = next;
+        startBlackout(); // speed up blackout timer
+        sfx.levelUp();
+        const banner = document.getElementById('current-stage');
+        banner.classList.remove('flash');
+        void banner.offsetWidth;
+        banner.classList.add('flash');
+    }
+    const cfg = STAGES[stage];
+    document.getElementById('current-stage').innerText = cfg.name;
+    document.getElementById('current-stage').style.color  = cfg.color;
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+    for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
-            let movedLifetimes = {};
-            let empty = ROWS - 1;
-            for (let r = ROWS - 1; r >= 0; r--) {
-                if (grid[r][c] !== null) {
-                    let v = grid[r][c];
-                    let oldKey = `${r},${c}`;
-                    let newKey = `${empty},${c}`;
-                    grid[r][c] = null;
-                    grid[empty][c] = v;
-                    if (stoneLifetimes[oldKey] !== undefined) {
-                        movedLifetimes[newKey] = stoneLifetimes[oldKey];
-                        delete stoneLifetimes[oldKey];
-                    }
-                    empty--;
-                }
-            }
-            Object.assign(stoneLifetimes, movedLifetimes);
-            for (let r = empty; r >= 0; r--) grid[r][c] = Math.floor(Math.random() * 4) + 1;
+            const el = document.getElementById(`tile-${r}-${c}`);
+            const v = grid[r][c];
+            const d = darkness[r][c];
+
+            let cls = 'tile ';
+            if      (!v || v === null)  cls += 'tile-empty';
+            else if (v === 'S')         cls += 'tile-stone';
+            else if (v === 'V')         cls += 'tile-void';
+            else                        cls += `tile-${v}`;
+
+            if      (d === 1) cls += ' b1';
+            else if (d === 2) cls += ' b2';
+            else if (d === 3) cls += ' b3';
+
+            el.className = cls;
+            el.innerText = (v === 'S' || v === 'V' || !v || d === 3) ? '' : v;
         }
     }
+    renderPivots();
+}
 
-    function render() {
-        for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS; c++) {
-                const el = document.getElementById(`tile-${r}-${c}`);
-                const v = grid[r][c];
-                el.className = 'tile ' + (v ? (v === 'S' ? 'tile-stone' : v === 'V' ? 'tile-void' : `tile-${v}`) : 'tile-empty');
-                
-                // Singularity visual chaos
-                el.innerText = (v === 'S' || v === 'V') ? '' : (v || '');
-                if (stage >= 3) {
-                    if (Math.random() > (stage === 5 ? 0.7 : 0.9)) {
-                        el.classList.add('glitch');
-                    } else {
-                        el.classList.remove('glitch');
-                    }
-                }
-                
-                el.classList.remove('harvesting');
-            }
-        }
-        renderPivots();
-    }
-
-    function renderPivots() {
-        const layer = document.getElementById('pivots');
-        layer.innerHTML = "";
-        for (let r = 0; r < ROWS - 1; r++) {
-            for (let c = 0; c < COLS - 1; c++) {
-                const p = document.createElement('div');
-                const locked = [grid[r][c], grid[r+1][c], grid[r][c+1], grid[r+1][c+1]].some(v => v === 'S' || v === 'V');
-                p.className = `pivot ${locked ? 'locked' : 'ready'}`;
-                p.style.top = `${(r + 1) * 59 + 10}px`;
-                p.style.left = `${(c + 1) * 59 + 10}px`;
-                if (!locked) p.onclick = () => handleMove(r, c);
-                layer.appendChild(p);
-            }
+function renderPivots() {
+    const layer = document.getElementById('pivots');
+    layer.innerHTML = '';
+    for (let r = 0; r < ROWS - 1; r++) {
+        for (let c = 0; c < COLS - 1; c++) {
+            const locked = [[r,c],[r+1,c],[r,c+1],[r+1,c+1]].some(
+                ([pr,pc]) => grid[pr][pc] === 'S' || grid[pr][pc] === 'V'
+            );
+            const p = document.createElement('div');
+            p.className = `pivot ${locked ? 'locked' : 'ready'}`;
+            p.style.top  = `${(r + 1) * TILE_SIZE + 10}px`;
+            p.style.left = `${(c + 1) * TILE_SIZE + 10}px`;
+            if (!locked) p.onclick = () => handleMove(r, c);
+            layer.appendChild(p);
         }
     }
+}
 
-    init();
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function inBounds(r, c) { return r >= 0 && r < ROWS && c >= 0 && c < COLS; }
+function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+function popScore() {
+    const el = document.getElementById('score');
+    el.classList.remove('pop');
+    void el.offsetWidth;
+    el.classList.add('pop');
+}
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+init();
 </script>
 </body>
 </html>
