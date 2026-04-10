@@ -141,22 +141,23 @@
     function processStageObstacles() {
         // Higher intensity stone/void spawning
         let spawnRate = (stage === 5) ? 4 : 7;
+        let obstacleLifetime = (stage >= 5) ? 10 : 6;
         if (moveCount % spawnRate === 0) {
             let r = Math.floor(Math.random() * ROWS), c = Math.floor(Math.random() * COLS);
             if (grid[r][c] !== 'S' && grid[r][c] !== 'V') {
                 grid[r][c] = (stage === 5 && Math.random() > 0.6) ? 'V' : 'S';
-                if (stage < 5) stoneLifetimes[`${r},${c}`] = 6;
+                stoneLifetimes[`${r},${c}`] = obstacleLifetime;
             }
         }
 
-        if (stage < 5) {
-            for (let key in stoneLifetimes) {
-                stoneLifetimes[key]--;
-                if (stoneLifetimes[key] <= 0) {
-                    let [r, c] = key.split(',').map(Number);
-                    if (grid[r][c] === 'S') grid[r][c] = Math.floor(Math.random() * 4) + 1;
-                    delete stoneLifetimes[key];
+        for (let key in stoneLifetimes) {
+            stoneLifetimes[key]--;
+            if (stoneLifetimes[key] <= 0) {
+                let [r, c] = key.split(',').map(Number);
+                if (grid[r][c] === 'S' || grid[r][c] === 'V') {
+                    grid[r][c] = Math.floor(Math.random() * 4) + 1;
                 }
+                delete stoneLifetimes[key];
             }
         }
         render();
@@ -191,7 +192,10 @@
             let [r, c] = k.split(',').map(Number);
             [[r-1,c], [r+1,c], [r,c-1], [r,c+1]].forEach(([nr, nc]) => {
                 if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
-                    if (grid[nr][nc] === 'S' || grid[nr][nc] === 'V') grid[nr][nc] = null;
+                    if (grid[nr][nc] === 'S' || grid[nr][nc] === 'V') {
+                        delete stoneLifetimes[`${nr},${nc}`];
+                        grid[nr][nc] = null;
+                    }
                 }
             });
             grid[r][c] = null;
@@ -253,15 +257,23 @@
 
     function applyGravity() {
         for (let c = 0; c < COLS; c++) {
+            let movedLifetimes = {};
             let empty = ROWS - 1;
             for (let r = ROWS - 1; r >= 0; r--) {
                 if (grid[r][c] !== null) {
                     let v = grid[r][c];
+                    let oldKey = `${r},${c}`;
+                    let newKey = `${empty},${c}`;
                     grid[r][c] = null;
                     grid[empty][c] = v;
+                    if (stoneLifetimes[oldKey] !== undefined) {
+                        movedLifetimes[newKey] = stoneLifetimes[oldKey];
+                        delete stoneLifetimes[oldKey];
+                    }
                     empty--;
                 }
             }
+            Object.assign(stoneLifetimes, movedLifetimes);
             for (let r = empty; r >= 0; r--) grid[r][c] = Math.floor(Math.random() * 4) + 1;
         }
     }
@@ -274,16 +286,13 @@
                 el.className = 'tile ' + (v ? (v === 'S' ? 'tile-stone' : v === 'V' ? 'tile-void' : `tile-${v}`) : 'tile-empty');
                 
                 // Singularity visual chaos
+                el.innerText = (v === 'S' || v === 'V') ? '' : (v || '');
                 if (stage >= 3) {
                     if (Math.random() > (stage === 5 ? 0.7 : 0.9)) {
                         el.classList.add('glitch');
-                        if (stage === 5) el.innerText = Math.floor(Math.random() * 4) + 1; // Lie about number
                     } else {
                         el.classList.remove('glitch');
-                        el.innerText = (v === 'S' || v === 'V') ? '' : (v || '');
                     }
-                } else {
-                    el.innerText = (v === 'S' || v === 'V') ? '' : (v || '');
                 }
                 
                 el.classList.remove('harvesting');
